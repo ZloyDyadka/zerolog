@@ -343,7 +343,10 @@ func (l *Logger) newEvent(level Level, done func(string)) *Event {
 	if !enabled {
 		return nil
 	}
-	e := newEvent(l.w, level, true)
+	e := newEvent(eventSettings{
+		writer: l.w,
+		level: level,
+	})
 	e.done = done
 	if l.context != nil && len(l.context) > 0 && l.context[0] > 0 {
 		// first byte of context is ts flag

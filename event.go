@@ -40,16 +40,18 @@ type LogArrayMarshaler interface {
 	MarshalZerologArray(a *Array)
 }
 
-func newEvent(w LevelWriter, level Level, enabled bool) *Event {
-	if !enabled {
-		return &Event{}
-	}
+type eventSettings struct {
+	writer LevelWriter
+	level Level
+}
+
+func newEvent(settings eventSettings) *Event {
 	e := eventPool.Get().(*Event)
 	e.buf = e.buf[:1]
 	e.h = e.h[:0]
 	e.buf[0] = '{'
-	e.w = w
-	e.level = level
+	e.w = settings.writer
+	e.level = settings.level
 	return e
 }
 
@@ -131,7 +133,10 @@ func (e *Event) Dict(key string, dict *Event) *Event {
 // Call usual field methods like Str, Int etc to add fields to this
 // event and give it as argument the *Event.Dict method.
 func Dict() *Event {
-	return newEvent(levelWriterAdapter{ioutil.Discard}, 0, true)
+	return newEvent(eventSettings{
+		writer: levelWriterAdapter{ioutil.Discard},
+		level: 0,
+	})
 }
 
 // Array adds the field key with an array to the event context.

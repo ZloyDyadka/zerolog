@@ -53,7 +53,10 @@ func (c Context) Array(key string, arr LogArrayMarshaler) Context {
 
 // Object marshals an object that implement the LogObjectMarshaler interface.
 func (c Context) Object(key string, obj LogObjectMarshaler) Context {
-	e := newEvent(levelWriterAdapter{ioutil.Discard}, 0, true)
+	e := newEvent(eventSettings{
+		writer: levelWriterAdapter{ioutil.Discard},
+		level: 0,
+	})
 	e.Object(key, obj)
 	e.buf[0] = ',' // A new event starts as an object, we want to embed it.
 	c.l.context = append(c.l.context, e.buf...)
