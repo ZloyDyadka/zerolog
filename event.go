@@ -61,8 +61,15 @@ func (e *Event) write() (err error) {
 	}
 	e.buf = append(e.buf, '}', '\n')
 	_, err = e.w.WriteLevel(e.level, e.buf)
-	eventPool.Put(e)
+	e.returnToPool()
 	return
+}
+
+func (e *Event) returnToPool() {
+	if e == nil {
+		return
+	}
+	eventPool.Put(e)
 }
 
 // Enabled return false if the *Event is going to be filtered out by
@@ -125,7 +132,7 @@ func (e *Event) Dict(key string, dict *Event) *Event {
 		return e
 	}
 	e.buf = append(append(json.AppendKey(e.buf, key), dict.buf...), '}')
-	eventPool.Put(dict)
+	dict.returnToPool()
 	return e
 }
 
