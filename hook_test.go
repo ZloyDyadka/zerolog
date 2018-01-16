@@ -1,9 +1,9 @@
 package zerolog
 
 import (
-	"testing"
 	"bytes"
 	"io/ioutil"
+	"testing"
 )
 
 type LevelNameHook struct{}

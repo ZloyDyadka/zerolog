@@ -4,7 +4,7 @@ import (
 	"io/ioutil"
 	"time"
 
-	"github.com/rs/zerolog/internal/json"
+	"github.com/ZloyDyadka/zerolog/internal/json"
 )
 
 // Context configures a new sub-logger with contextual fields.
@@ -55,7 +55,7 @@ func (c Context) Array(key string, arr LogArrayMarshaler) Context {
 func (c Context) Object(key string, obj LogObjectMarshaler) Context {
 	e := newEvent(eventSettings{
 		writer: levelWriterAdapter{ioutil.Discard},
-		level: 0,
+		level:  0,
 	})
 	e.Object(key, obj)
 	e.buf[0] = ',' // A new event starts as an object, we want to embed it.

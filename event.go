@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/rs/zerolog/internal/json"
+	"github.com/ZloyDyadka/zerolog/internal/json"
 )
 
 var eventPool = &sync.Pool{
@@ -18,14 +18,22 @@ var eventPool = &sync.Pool{
 	},
 }
 
+var spanFieldsPool = &sync.Pool{
+	New: func() interface{} {
+		return newSpanFields()
+	},
+}
+
 // Event represents a log event. It is instanced by one of the level method of
 // Logger and finalized by the Msg or Msgf method.
 type Event struct {
-	buf   []byte
-	w     LevelWriter
-	level Level
-	done  func(msg string)
-	h     []Hook
+	buf        []byte
+	span       *span
+	spanFields spanFields
+	w          LevelWriter
+	level      Level
+	done       func(msg string)
+	h          []Hook
 }
 
 // LogObjectMarshaler provides a strongly-typed and encoding-agnostic interface
@@ -42,7 +50,8 @@ type LogArrayMarshaler interface {
 
 type eventSettings struct {
 	writer LevelWriter
-	level Level
+	level  Level
+	span   *span
 }
 
 func newEvent(settings eventSettings) *Event {
@@ -52,6 +61,13 @@ func newEvent(settings eventSettings) *Event {
 	e.buf[0] = '{'
 	e.w = settings.writer
 	e.level = settings.level
+
+	if settings.span != nil {
+		e.span = settings.span
+		e.spanFields = spanFieldsPool.Get().(spanFields)
+		e.spanFields = e.spanFields[:0]
+	}
+
 	return e
 }
 
@@ -70,6 +86,8 @@ func (e *Event) returnToPool() {
 		return
 	}
 	eventPool.Put(e)
+	spanFieldsPool.Put(e.spanFields)
+	e.spanFields = nil
 }
 
 // Enabled return false if the *Event is going to be filtered out by
@@ -103,6 +121,8 @@ func (e *Event) Msg(msg string) {
 	if err := e.write(); err != nil {
 		fmt.Fprintf(os.Stderr, "zerolog: could not write event: %v", err)
 	}
+
+	e.span.logWithFields(msg, e.level, e.spanFields...)
 }
 
 // Msgf sends the event with formated msg added as the message field if not empty.
@@ -122,6 +142,7 @@ func (e *Event) Fields(fields map[string]interface{}) *Event {
 		return e
 	}
 	e.buf = appendFields(e.buf, fields)
+	e.spanFields.Fields(fields)
 	return e
 }
 
@@ -132,6 +153,7 @@ func (e *Event) Dict(key string, dict *Event) *Event {
 		return e
 	}
 	e.buf = append(append(json.AppendKey(e.buf, key), dict.buf...), '}')
+	e.spanFields.Dict(key, dict)
 	dict.returnToPool()
 	return e
 }
@@ -142,7 +164,7 @@ func (e *Event) Dict(key string, dict *Event) *Event {
 func Dict() *Event {
 	return newEvent(eventSettings{
 		writer: levelWriterAdapter{ioutil.Discard},
-		level: 0,
+		level:  0,
 	})
 }
 
@@ -161,6 +183,7 @@ func (e *Event) Array(key string, arr LogArrayMarshaler) *Event {
 		a = Arr()
 		arr.MarshalZerologArray(a)
 	}
+	e.spanFields.Array(key, string(a.buf))
 	e.buf = a.write(e.buf)
 	return e
 }
@@ -195,6 +218,7 @@ func (e *Event) Str(key, val string) *Event {
 		return e
 	}
 	e.buf = json.AppendString(json.AppendKey(e.buf, key), val)
+	e.spanFields.Str(key, val)
 	return e
 }
 
@@ -204,6 +228,7 @@ func (e *Event) Strs(key string, vals []string) *Event {
 		return e
 	}
 	e.buf = json.AppendStrings(json.AppendKey(e.buf, key), vals)
+	e.spanFields.Strs(key, vals)
 	return e
 }
 
@@ -216,6 +241,7 @@ func (e *Event) Bytes(key string, val []byte) *Event {
 		return e
 	}
 	e.buf = json.AppendBytes(json.AppendKey(e.buf, key), val)
+	e.spanFields.Bytes(key, val)
 	return e
 }
 
@@ -227,6 +253,7 @@ func (e *Event) AnErr(key string, err error) *Event {
 	}
 	if err != nil {
 		e.buf = json.AppendError(json.AppendKey(e.buf, key), err)
+		e.spanFields.AnErr(key, err)
 	}
 	return e
 }
@@ -238,6 +265,7 @@ func (e *Event) Errs(key string, errs []error) *Event {
 		return e
 	}
 	e.buf = json.AppendErrors(json.AppendKey(e.buf, key), errs)
+	e.spanFields.Errs(key, errs)
 	return e
 }
 
@@ -250,6 +278,7 @@ func (e *Event) Err(err error) *Event {
 	}
 	if err != nil {
 		e.buf = json.AppendError(json.AppendKey(e.buf, ErrorFieldName), err)
+		e.spanFields.Err(err)
 	}
 	return e
 }
@@ -260,6 +289,7 @@ func (e *Event) Bool(key string, b bool) *Event {
 		return e
 	}
 	e.buf = json.AppendBool(json.AppendKey(e.buf, key), b)
+	e.spanFields.Bool(key, b)
 	return e
 }
 
@@ -269,6 +299,7 @@ func (e *Event) Bools(key string, b []bool) *Event {
 		return e
 	}
 	e.buf = json.AppendBools(json.AppendKey(e.buf, key), b)
+	e.spanFields.Bools(key, b)
 	return e
 }
 
@@ -278,6 +309,7 @@ func (e *Event) Int(key string, i int) *Event {
 		return e
 	}
 	e.buf = json.AppendInt(json.AppendKey(e.buf, key), i)
+	e.spanFields.Int(key, i)
 	return e
 }
 
@@ -287,6 +319,7 @@ func (e *Event) Ints(key string, i []int) *Event {
 		return e
 	}
 	e.buf = json.AppendInts(json.AppendKey(e.buf, key), i)
+	e.spanFields.Ints(key, i)
 	return e
 }
 
@@ -296,6 +329,7 @@ func (e *Event) Int8(key string, i int8) *Event {
 		return e
 	}
 	e.buf = json.AppendInt8(json.AppendKey(e.buf, key), i)
+	e.spanFields.Int8(key, i)
 	return e
 }
 
@@ -305,6 +339,7 @@ func (e *Event) Ints8(key string, i []int8) *Event {
 		return e
 	}
 	e.buf = json.AppendInts8(json.AppendKey(e.buf, key), i)
+	e.spanFields.Ints8(key, i)
 	return e
 }
 
@@ -314,6 +349,7 @@ func (e *Event) Int16(key string, i int16) *Event {
 		return e
 	}
 	e.buf = json.AppendInt16(json.AppendKey(e.buf, key), i)
+	e.spanFields.Int16(key, i)
 	return e
 }
 
@@ -323,6 +359,7 @@ func (e *Event) Ints16(key string, i []int16) *Event {
 		return e
 	}
 	e.buf = json.AppendInts16(json.AppendKey(e.buf, key), i)
+	e.spanFields.Ints16(key, i)
 	return e
 }
 
@@ -332,6 +369,7 @@ func (e *Event) Int32(key string, i int32) *Event {
 		return e
 	}
 	e.buf = json.AppendInt32(json.AppendKey(e.buf, key), i)
+	e.spanFields.Int32(key, i)
 	return e
 }
 
@@ -341,6 +379,7 @@ func (e *Event) Ints32(key string, i []int32) *Event {
 		return e
 	}
 	e.buf = json.AppendInts32(json.AppendKey(e.buf, key), i)
+	e.spanFields.Ints32(key, i)
 	return e
 }
 
@@ -350,6 +389,7 @@ func (e *Event) Int64(key string, i int64) *Event {
 		return e
 	}
 	e.buf = json.AppendInt64(json.AppendKey(e.buf, key), i)
+	e.spanFields.Int64(key, i)
 	return e
 }
 
@@ -359,6 +399,7 @@ func (e *Event) Ints64(key string, i []int64) *Event {
 		return e
 	}
 	e.buf = json.AppendInts64(json.AppendKey(e.buf, key), i)
+	e.spanFields.Ints64(key, i)
 	return e
 }
 
@@ -368,6 +409,7 @@ func (e *Event) Uint(key string, i uint) *Event {
 		return e
 	}
 	e.buf = json.AppendUint(json.AppendKey(e.buf, key), i)
+	e.spanFields.Uint(key, i)
 	return e
 }
 
@@ -377,6 +419,7 @@ func (e *Event) Uints(key string, i []uint) *Event {
 		return e
 	}
 	e.buf = json.AppendUints(json.AppendKey(e.buf, key), i)
+	e.spanFields.Uints(key, i)
 	return e
 }
 
@@ -386,6 +429,7 @@ func (e *Event) Uint8(key string, i uint8) *Event {
 		return e
 	}
 	e.buf = json.AppendUint8(json.AppendKey(e.buf, key), i)
+	e.spanFields.Uint8(key, i)
 	return e
 }
 
@@ -395,6 +439,7 @@ func (e *Event) Uints8(key string, i []uint8) *Event {
 		return e
 	}
 	e.buf = json.AppendUints8(json.AppendKey(e.buf, key), i)
+	e.spanFields.Uints8(key, i)
 	return e
 }
 
@@ -404,6 +449,7 @@ func (e *Event) Uint16(key string, i uint16) *Event {
 		return e
 	}
 	e.buf = json.AppendUint16(json.AppendKey(e.buf, key), i)
+	e.spanFields.Uint16(key, i)
 	return e
 }
 
@@ -413,6 +459,7 @@ func (e *Event) Uints16(key string, i []uint16) *Event {
 		return e
 	}
 	e.buf = json.AppendUints16(json.AppendKey(e.buf, key), i)
+	e.spanFields.Uints16(key, i)
 	return e
 }
 
@@ -422,6 +469,7 @@ func (e *Event) Uint32(key string, i uint32) *Event {
 		return e
 	}
 	e.buf = json.AppendUint32(json.AppendKey(e.buf, key), i)
+	e.spanFields.Uint32(key, i)
 	return e
 }
 
@@ -431,6 +479,7 @@ func (e *Event) Uints32(key string, i []uint32) *Event {
 		return e
 	}
 	e.buf = json.AppendUints32(json.AppendKey(e.buf, key), i)
+	e.spanFields.Uints32(key, i)
 	return e
 }
 
@@ -440,6 +489,7 @@ func (e *Event) Uint64(key string, i uint64) *Event {
 		return e
 	}
 	e.buf = json.AppendUint64(json.AppendKey(e.buf, key), i)
+	e.spanFields.Uint64(key, i)
 	return e
 }
 
@@ -449,6 +499,7 @@ func (e *Event) Uints64(key string, i []uint64) *Event {
 		return e
 	}
 	e.buf = json.AppendUints64(json.AppendKey(e.buf, key), i)
+	e.spanFields.Uints64(key, i)
 	return e
 }
 
@@ -458,6 +509,7 @@ func (e *Event) Float32(key string, f float32) *Event {
 		return e
 	}
 	e.buf = json.AppendFloat32(json.AppendKey(e.buf, key), f)
+	e.spanFields.Float32(key, f)
 	return e
 }
 
@@ -467,6 +519,7 @@ func (e *Event) Floats32(key string, f []float32) *Event {
 		return e
 	}
 	e.buf = json.AppendFloats32(json.AppendKey(e.buf, key), f)
+	e.spanFields.Floats32(key, f)
 	return e
 }
 
@@ -476,6 +529,8 @@ func (e *Event) Float64(key string, f float64) *Event {
 		return e
 	}
 	e.buf = json.AppendFloat64(json.AppendKey(e.buf, key), f)
+	e.spanFields.Float64(key, f)
+
 	return e
 }
 
@@ -485,6 +540,7 @@ func (e *Event) Floats64(key string, f []float64) *Event {
 		return e
 	}
 	e.buf = json.AppendFloats64(json.AppendKey(e.buf, key), f)
+	e.spanFields.Floats64(key, f)
 	return e
 }
 
@@ -504,6 +560,7 @@ func (e *Event) Time(key string, t time.Time) *Event {
 		return e
 	}
 	e.buf = json.AppendTime(json.AppendKey(e.buf, key), t, TimeFieldFormat)
+	e.spanFields.Time(key, t)
 	return e
 }
 
@@ -513,6 +570,7 @@ func (e *Event) Times(key string, t []time.Time) *Event {
 		return e
 	}
 	e.buf = json.AppendTimes(json.AppendKey(e.buf, key), t, TimeFieldFormat)
+	e.spanFields.Times(key, t)
 	return e
 }
 
@@ -524,6 +582,7 @@ func (e *Event) Dur(key string, d time.Duration) *Event {
 		return e
 	}
 	e.buf = json.AppendDuration(json.AppendKey(e.buf, key), d, DurationFieldUnit, DurationFieldInteger)
+	e.spanFields.Dur(key, d)
 	return e
 }
 
@@ -535,6 +594,7 @@ func (e *Event) Durs(key string, d []time.Duration) *Event {
 		return e
 	}
 	e.buf = json.AppendDurations(json.AppendKey(e.buf, key), d, DurationFieldUnit, DurationFieldInteger)
+	e.spanFields.Durs(key, d)
 	return e
 }
 
@@ -550,6 +610,7 @@ func (e *Event) TimeDiff(key string, t time.Time, start time.Time) *Event {
 		d = t.Sub(start)
 	}
 	e.buf = json.AppendDuration(json.AppendKey(e.buf, key), d, DurationFieldUnit, DurationFieldInteger)
+	e.spanFields.TimeDiff(key, t, start)
 	return e
 }
 
@@ -562,5 +623,6 @@ func (e *Event) Interface(key string, i interface{}) *Event {
 		return e.Object(key, obj)
 	}
 	e.buf = json.AppendInterface(json.AppendKey(e.buf, key), i)
+	e.spanFields.Interface(key, i)
 	return e
 }

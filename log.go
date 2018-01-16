@@ -91,7 +91,8 @@ import (
 	"os"
 	"strconv"
 
-	"github.com/rs/zerolog/internal/json"
+	"github.com/ZloyDyadka/zerolog/internal/json"
+	"github.com/opentracing/opentracing-go"
 )
 
 // Level defines log levels.
@@ -147,6 +148,7 @@ type Logger struct {
 	sampler Sampler
 	context []byte
 	hooks   []Hook
+	span    *span
 }
 
 // New creates a root logger with given output writer. If the output writer implements
@@ -198,6 +200,13 @@ func (l Logger) With() Context {
 		l.context = append(l.context, 0)
 	}
 	return Context{l}
+}
+
+// WithSpan returns a logger with the OpenTracing span,
+// and all logging calls are echo-ed into the span.
+func (l Logger) WithSpan(s opentracing.Span) Logger {
+	l.span = newSpan(s)
+	return l
 }
 
 // UpdateContext updates the internal logger's context.
@@ -345,7 +354,8 @@ func (l *Logger) newEvent(level Level, done func(string)) *Event {
 	}
 	e := newEvent(eventSettings{
 		writer: l.w,
-		level: level,
+		level:  level,
+		span:   l.span,
 	})
 	e.done = done
 	if l.context != nil && len(l.context) > 0 && l.context[0] > 0 {
