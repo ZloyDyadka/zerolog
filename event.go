@@ -122,7 +122,7 @@ func (e *Event) Msg(msg string) {
 		fmt.Fprintf(os.Stderr, "zerolog: could not write event: %v", err)
 	}
 
-	e.span.logWithFields(msg, e.level, e.spanFields...)
+	e.span.logWithFields(msg, e.spanFields...)
 }
 
 // Msgf sends the event with formated msg added as the message field if not empty.

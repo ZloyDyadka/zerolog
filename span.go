@@ -1,11 +1,11 @@
 package zerolog
 
 import (
+	"encoding/json"
 	"time"
 
 	"github.com/opentracing/opentracing-go"
 	"github.com/opentracing/opentracing-go/log"
-	"encoding/json"
 )
 
 type span struct {
@@ -20,15 +20,18 @@ func newSpan(s opentracing.Span) *span {
 	}
 }
 
-func (s *span) logWithFields(msg string, level Level, fields ...log.Field) {
-	fields = append(fields, makeSpanInfoLogFields(msg, level)...)
+func (s *span) logWithFields(msg string, fields ...log.Field) {
+	if s == nil {
+		return
+	}
+
+	fields = append(fields, makeSpanInfoLogFields(msg)...)
 	fields = append(fields, s.context...)
 	s.originSpan.LogFields(fields...)
 }
 
-func makeSpanInfoLogFields(msg string, level Level) []log.Field {
+func makeSpanInfoLogFields(msg string) []log.Field {
 	return []log.Field{
-		log.String("level", level.String()),
 		log.String("event", msg),
 	}
 }
