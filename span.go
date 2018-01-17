@@ -55,6 +55,11 @@ func (sf *spanFields) Fields(fields map[string]interface{}) {
 	if sf == nil {
 		return
 	}
+
+	//TODO: Fix me, please!
+	for key, field := range fields {
+		sf.Interface(key, field)
+	}
 }
 
 func (sf *spanFields) Dict(key string, dict *Event) {
