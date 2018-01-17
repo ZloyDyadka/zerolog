@@ -85,6 +85,7 @@
 package zerolog
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -202,10 +203,21 @@ func (l Logger) With() Context {
 	return Context{l}
 }
 
-// WithSpan returns a logger with the OpenTracing span,
+// WithSpan duplicates the logger with the OpenTracing span,
 // and all logging calls are echo-ed into the span.
 func (l Logger) WithSpan(s opentracing.Span) Logger {
 	l.span = newSpan(s)
+	return l
+}
+
+// WithSpan duplicates the logger with the extracted
+// from context OpenTracing span, and all
+// logging calls are echo-ed into the span.
+// If span not found returned base logger.
+func (l Logger) WithSpanFromCtx(ctx context.Context) Logger {
+	if s := opentracing.SpanFromContext(ctx); s != nil {
+		l.span = newSpan(s)
+	}
 	return l
 }
 
