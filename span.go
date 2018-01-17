@@ -79,10 +79,12 @@ func (sf *spanFields) Array(key string, arr string) {
 }
 
 //TODO: implement marshaller
-func (sf *spanFields) Object(key string, obj LogObjectMarshaler) {
+func (sf *spanFields) Object(key string, obj string) {
 	if sf == nil {
 		return
 	}
+
+	*sf = append(*sf, log.String(key, obj))
 }
 
 // Str adds the field key with val as a string to thf spanFields context.

@@ -207,8 +207,11 @@ func (e *Event) Object(key string, obj LogObjectMarshaler) *Event {
 	if e == nil {
 		return e
 	}
+	oldLen := len(e.buf)
 	e.buf = json.AppendKey(e.buf, key)
 	e.appendObject(obj)
+	newLen := len(e.buf)
+	e.spanFields.Object(key, string(e.buf[(oldLen+3+len(key)):newLen]))
 	return e
 }
 
