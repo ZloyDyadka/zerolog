@@ -77,7 +77,6 @@ func (e *Event) write() (err error) {
 	}
 	e.buf = append(e.buf, '}', '\n')
 	_, err = e.w.WriteLevel(e.level, e.buf)
-	e.returnToPool()
 	return
 }
 
@@ -123,6 +122,7 @@ func (e *Event) Msg(msg string) {
 	}
 
 	e.span.logWithFields(msg, e.spanFields...)
+	e.returnToPool()
 }
 
 // Msgf sends the event with formated msg added as the message field if not empty.
