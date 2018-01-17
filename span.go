@@ -9,7 +9,7 @@ import (
 )
 
 type span struct {
-	context    []log.Field
+	context    spanFields
 	originSpan opentracing.Span
 }
 
@@ -25,15 +25,23 @@ func (s *span) logWithFields(msg string, fields ...log.Field) {
 		return
 	}
 
-	fields = append(fields, makeSpanInfoLogFields(msg)...)
-	fields = append(fields, s.context...)
-	s.originSpan.LogFields(fields...)
+	s.originSpan.LogFields(s.composeFields(msg, fields...)...)
 }
 
 func makeSpanInfoLogFields(msg string) []log.Field {
 	return []log.Field{
 		log.String("event", msg),
 	}
+}
+
+func (s *span) composeFields(msg string, f ...log.Field) spanFields {
+	info := makeSpanInfoLogFields(msg)
+	fields := make([]log.Field, len(f)+len(s.context)+len(info))
+	copy(fields, info)
+	copy(fields, s.context)
+	copy(fields, f)
+
+	return f
 }
 
 //TODO: Not dereference twice
